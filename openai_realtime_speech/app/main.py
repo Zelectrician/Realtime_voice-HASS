@@ -1,6 +1,7 @@
 import os
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+import json
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 import httpx
 
@@ -13,8 +14,6 @@ DEFAULT_TEMPERATURE = float(os.getenv("OPENAI_TEMPERATURE", "0.7"))
 OPENAI_BASE_URL = "https://api.openai.com/v1"
 
 app = FastAPI(title="OpenAI Realtime Speech Add-on")
-
-# Serve static UI
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 
@@ -23,42 +22,45 @@ def root():
     return FileResponse("app/static/index.html")
 
 
-@app.post("/api/client_secret")
-async def create_client_secret():
+@app.post("/api/session", response_class=PlainTextResponse)
+async def create_session(req: Request):
     """
-    Generates an ephemeral client secret for browser WebRTC or WebSocket usage.
-    This keeps the long-lived OPENAI_API_KEY on the server only.
+    Browser posts SDP offer (text/plain or application/sdp).
+    Add-on creates a Realtime WebRTC call via OpenAI /v1/realtime/calls
+    and returns SDP answer as plain text.
+
+    This follows OpenAI's "unified interface" WebRTC pattern. :contentReference[oaicite:4]{index=4}
     """
     if not OPENAI_API_KEY:
         raise HTTPException(status_code=400, detail="OpenAI API key not configured in add-on options.")
 
-    payload = {
-        "session": {
-            "type": "realtime",
-            "model": DEFAULT_MODEL,
-            "instructions": DEFAULT_INSTRUCTIONS,
-            "temperature": DEFAULT_TEMPERATURE,
-            "audio": {
-                "output": {"voice": DEFAULT_VOICE},
-            },
-        }
+    offer_sdp = (await req.body()).decode("utf-8", errors="ignore").strip()
+    if not offer_sdp.startswith("v="):
+        raise HTTPException(status_code=400, detail="Invalid SDP offer posted to /api/session.")
+
+    # Session config (same shape as documented for /v1/realtime/calls 'session' field). :contentReference[oaicite:5]{index=5}
+    session = {
+        "type": "realtime",
+        "model": DEFAULT_MODEL,
+        "instructions": DEFAULT_INSTRUCTIONS,
+        "temperature": DEFAULT_TEMPERATURE,
+        "audio": {"output": {"voice": DEFAULT_VOICE}},
     }
 
     headers = {
         "Authorization": f"Bearer {OPENAI_API_KEY}",
-        "Content-Type": "application/json",
     }
 
-    async with httpx.AsyncClient(timeout=20) as client:
-        r = await client.post(f"{OPENAI_BASE_URL}/realtime/client_secrets", headers=headers, json=payload)
+    files = {
+        "sdp": ("offer.sdp", offer_sdp, "application/sdp"),
+        "session": ("session.json", json.dumps(session), "application/json"),
+    }
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(f"{OPENAI_BASE_URL}/realtime/calls", headers=headers, files=files)
 
     if r.status_code >= 400:
         raise HTTPException(status_code=502, detail=f"OpenAI error: {r.status_code} {r.text}")
 
-    data = r.json()
-    # Return the minimal fields the frontend needs
-    return {
-        "client_secret": data.get("client_secret"),
-        "model": DEFAULT_MODEL,
-        "voice": DEFAULT_VOICE,
-    }
+    # OpenAI returns SDP answer as text. :contentReference[oaicite:6]{index=6}
+    return r.text

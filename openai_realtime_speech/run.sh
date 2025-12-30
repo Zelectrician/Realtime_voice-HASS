@@ -3,7 +3,6 @@ set -e
 
 export PYTHONUNBUFFERED=1
 
-# Read options from add-on config (bashio is available in HA base images)
 export OPENAI_API_KEY="$(bashio::config 'api_key')"
 export OPENAI_MODEL="$(bashio::config 'model')"
 export OPENAI_VOICE="$(bashio::config 'voice')"

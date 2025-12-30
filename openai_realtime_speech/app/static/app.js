@@ -1,80 +1,61 @@
 const btnStart = document.getElementById("btnStart");
 const btnStop = document.getElementById("btnStop");
 const statusEl = document.getElementById("status");
+const remoteAudio = document.getElementById("remoteAudio");
+
+const wakeEnabled = document.getElementById("wakeEnabled");
+const wakePhraseEl = document.getElementById("wakePhrase");
+const btnWake = document.getElementById("btnWake");
+const btnWakeStop = document.getElementById("btnWakeStop");
 
 let pc = null;
 let localStream = null;
+
+let recognizer = null;
+let wakeListening = false;
 
 function setStatus(msg) {
   statusEl.textContent = msg;
 }
 
-async function getClientSecret() {
-  const r = await fetch("/api/client_secret", { method: "POST" });
-  if (!r.ok) throw new Error(`client_secret failed: ${r.status} ${await r.text()}`);
-  return r.json();
+async function createPeerAndOffer() {
+  pc = new RTCPeerConnection();
+
+  pc.ontrack = (event) => {
+    const [remoteStream] = event.streams;
+    remoteAudio.srcObject = remoteStream;
+  };
+
+  localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  for (const track of localStream.getTracks()) {
+    pc.addTrack(track, localStream);
+  }
+
+  const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: false });
+  await pc.setLocalDescription(offer);
+  return offer.sdp;
 }
 
-// Minimal WebRTC -> OpenAI Realtime call flow:
-// 1) Create RTCPeerConnection, add mic track, set up ontrack playback
-// 2) Create SDP offer, send to OpenAI /v1/realtime/calls with Authorization: Bearer <ephemeral secret>
-// 3) Receive SDP answer, setRemoteDescription
-async function start() {
+async function postSdpToAddon(offerSdp) {
+  const r = await fetch("/api/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/sdp" },
+    body: offerSdp
+  });
+  if (!r.ok) throw new Error(`/api/session failed: ${r.status} ${await r.text()}`);
+  return r.text();
+}
+
+async function startCall() {
   btnStart.disabled = true;
   btnStop.disabled = false;
 
   try {
-    setStatus("Requesting microphone...");
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    setStatus("Creating WebRTC offer...");
+    const offerSdp = await createPeerAndOffer();
 
-    setStatus("Requesting ephemeral client secret from add-on...");
-    const { client_secret } = await getClientSecret();
-    if (!client_secret) throw new Error("Missing client_secret in response.");
-
-    setStatus("Creating WebRTC peer connection...");
-    pc = new RTCPeerConnection();
-
-    // Play remote audio
-    pc.ontrack = (event) => {
-      const [remoteStream] = event.streams;
-      let audio = document.getElementById("remoteAudio");
-      if (!audio) {
-        audio = document.createElement("audio");
-        audio.id = "remoteAudio";
-        audio.autoplay = true;
-        audio.controls = true;
-        document.body.appendChild(audio);
-      }
-      audio.srcObject = remoteStream;
-    };
-
-    // Add mic track
-    for (const track of localStream.getTracks()) {
-      pc.addTrack(track, localStream);
-    }
-
-    setStatus("Creating SDP offer...");
-    const offer = await pc.createOffer({
-      offerToReceiveAudio: true,
-      offerToReceiveVideo: false,
-    });
-    await pc.setLocalDescription(offer);
-
-    setStatus("Sending offer to OpenAI Realtime /calls...");
-    const form = new FormData();
-    form.append("sdp", new Blob([offer.sdp], { type: "application/sdp" }), "offer.sdp");
-    // The server preconfigures session via client_secrets; you can also pass session here if desired.
-
-    const resp = await fetch("https://api.openai.com/v1/realtime/calls", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${client_secret}`,
-      },
-      body: form,
-    });
-
-    if (!resp.ok) throw new Error(`OpenAI /calls failed: ${resp.status} ${await resp.text()}`);
-    const answerSdp = await resp.text();
+    setStatus("Sending offer to add-on (server will call OpenAI)...");
+    const answerSdp = await postSdpToAddon(offerSdp);
 
     setStatus("Applying SDP answer...");
     await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
@@ -83,11 +64,11 @@ async function start() {
   } catch (e) {
     console.error(e);
     setStatus(`Error: ${e.message}`);
-    await stop();
+    await stopCall();
   }
 }
 
-async function stop() {
+async function stopCall() {
   btnStop.disabled = true;
   btnStart.disabled = false;
 
@@ -102,5 +83,77 @@ async function stop() {
   setStatus("Idle");
 }
 
-btnStart.addEventListener("click", start);
-btnStop.addEventListener("click", stop);
+btnStart.addEventListener("click", startCall);
+btnStop.addEventListener("click", stopCall);
+
+/* Wake word (browser SpeechRecognition)
+   Note: This is NOT offline on most browsers; it uses the browser's speech service.
+*/
+function supportsSpeechRecognition() {
+  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+
+function startWakeListening() {
+  if (!supportsSpeechRecognition()) {
+    setStatus("Wake word error: SpeechRecognition not supported in this browser.");
+    return;
+  }
+  if (wakeListening) return;
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognizer = new SR();
+  recognizer.continuous = true;
+  recognizer.interimResults = true;
+  recognizer.lang = "en-US";
+
+  recognizer.onresult = async (event) => {
+    const phrase = (wakePhraseEl.value || "").trim().toLowerCase();
+    if (!phrase) return;
+
+    // Look at the most recent result chunk
+    const res = event.results[event.results.length - 1];
+    if (!res || !res[0]) return;
+    const text = (res[0].transcript || "").trim().toLowerCase();
+
+    if (wakeEnabled.checked && text.includes(phrase)) {
+      setStatus(`Wake phrase detected ("${phrase}"). Starting call...`);
+      stopWakeListening();
+      if (!pc) await startCall();
+    }
+  };
+
+  recognizer.onerror = (e) => {
+    setStatus(`Wake word error: ${e.error || "unknown"}`);
+  };
+
+  recognizer.onend = () => {
+    // Some browsers stop recognition after a while; optionally auto-restart.
+    if (wakeListening) {
+      try { recognizer.start(); } catch (_) {}
+    }
+  };
+
+  wakeListening = true;
+  btnWake.disabled = true;
+  btnWakeStop.disabled = false;
+  setStatus("Wake listening: ON");
+
+  try { recognizer.start(); } catch (e) {
+    setStatus(`Wake start failed: ${e.message}`);
+  }
+}
+
+function stopWakeListening() {
+  wakeListening = false;
+  btnWake.disabled = false;
+  btnWakeStop.disabled = true;
+
+  if (recognizer) {
+    try { recognizer.onend = null; recognizer.stop(); } catch (_) {}
+    recognizer = null;
+  }
+  setStatus("Wake listening: OFF");
+}
+
+btnWake.addEventListener("click", startWakeListening);
+btnWakeStop.addEventListener("click", stopWakeListening);
