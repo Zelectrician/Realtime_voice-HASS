@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>OpenAI Realtime Speech</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>OpenAI Realtime Speech</h1>
+
+      <section class="card">
+        <div class="row">
+          <button id="btnStart">Start</button>
+          <button id="btnStop" disabled>Stop</button>
+        </div>
+        <p class="hint">
+          Uses WebRTC in your browser for low latency. Your OpenAI API key stays inside Home Assistant.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Status</h2>
+        <pre id="status">Idle</pre>
+      </section>
+
+      <section class="card">
+        <h2>Notes</h2>
+        <ul>
+          <li>If you do not hear audio, check browser autoplay permissions and HA ingress/proxy behavior.</li>
+          <li>Some reverse proxies require explicit WebSocket/WebRTC support; Ingress generally works, but environments vary.</li>
+        </ul>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,39 @@
+name: "OpenAI Realtime Speech (WebRTC)"
+version: "0.1.0"
+slug: "openai_realtime_speech"
+description: "Ingress UI for OpenAI Realtime speech-to-speech using WebRTC with ephemeral client secrets."
+arch:
+  - amd64
+  - aarch64
+  - armv7
+  - armhf
+  - i386
+
+startup: application
+init: false
+
+ingress: true
+ingress_port: 8099
+panel_icon: "mdi:account-voice"
+panel_title: "OpenAI Realtime Speech"
+
+ports:
+  8099/tcp: null
+
+options:
+  api_key: ""
+  model: "gpt-realtime"
+  voice: "marin"
+  instructions: "You are a helpful voice assistant."
+  temperature: 0.7
+
+schema:
+  api_key: "str"
+  model: "str"
+  voice: "str"
+  instructions: "str"
+  temperature: "float(0.0,2.0)"
+
+# Optional: allow add-on to call HA Core APIs later if you extend it
+homeassistant_api: false
+hassio_api: false
