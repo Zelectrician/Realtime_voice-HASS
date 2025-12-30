@@ -1,5 +1,5 @@
 name: "OpenAI Realtime Speech (WebRTC)"
-version: "0.1.0"
+version: "0.1.1"
 slug: "openai_realtime_speech"
 description: "Ingress UI for OpenAI Realtime speech-to-speech using WebRTC with ephemeral client secrets."
 arch:
@@ -37,3 +37,4 @@ schema:
 # Optional: allow add-on to call HA Core APIs later if you extend it
 homeassistant_api: false
 hassio_api: false
+
