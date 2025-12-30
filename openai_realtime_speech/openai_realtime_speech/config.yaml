@@ -1,0 +1,36 @@
+name: OpenAI Realtime Speech
+slug: openai_realtime_speech
+version: "0.2.0"
+description: Realtime OpenAI speech assistant with wake word
+arch:
+  - amd64
+  - aarch64
+  - armv7
+  - armhf
+  - i386
+
+startup: application
+boot: auto
+init: false
+
+ingress: true
+ingress_port: 8099
+panel_icon: mdi:account-voice
+panel_title: OpenAI Speech
+
+options:
+  api_key: ""
+  model: gpt-realtime
+  voice: marin
+  instructions: You are a helpful voice assistant.
+  temperature: 0.7
+
+schema:
+  api_key: str
+  model: str
+  voice: str
+  instructions: str
+  temperature: float
+
+ports:
+  8099/tcp: null

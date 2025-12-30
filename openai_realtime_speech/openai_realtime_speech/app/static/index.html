@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>OpenAI Realtime Speech</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>OpenAI Realtime Speech</h1>
+
+      <section class="card">
+        <div class="row">
+          <button id="btnStart">Start</button>
+          <button id="btnStop" disabled>Stop</button>
+        </div>
+
+        <div class="row" style="margin-top:12px; gap:16px; flex-wrap:wrap;">
+          <label class="row" style="gap:8px;">
+            <input type="checkbox" id="wakeEnabled" checked />
+            <span>Wake word</span>
+          </label>
+
+          <label class="row" style="gap:8px;">
+            <span>Phrase:</span>
+            <input id="wakePhrase" value="hey assistant" />
+          </label>
+
+          <button id="btnWake" type="button">Start listening</button>
+          <button id="btnWakeStop" type="button" disabled>Stop listening</button>
+        </div>
+
+        <p class="hint">
+          Wake word uses your browser’s SpeechRecognition (best on Chromium). WebRTC call setup is proxied through this add-on.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Status</h2>
+        <pre id="status">Idle</pre>
+      </section>
+
+      <audio id="remoteAudio" autoplay controls style="width:100%; margin-top: 12px;"></audio>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
